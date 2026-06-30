@@ -1,0 +1,11 @@
+[
+    {
+        "name": "Default",
+        "cert_filter": "",
+        "rubric_image_path": "",
+        "signature_text": "Firmado digitalmente por $$SUBJECTCN$$ el $$SIGNDATE=dd/MM/yyyy$$",
+        "signature_font": "Courier",
+        "signature_font_size": 0,
+        "rubric_layout": "background"
+    }
+]
