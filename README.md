@@ -49,6 +49,22 @@ La aplicación busca de forma automática el ejecutable de AutoFirma en las ruta
 
 Si tu instalación se encuentra en una ruta personalizada, puedes examinar y asignarla directamente desde el panel de ajustes en la barra lateral.
 
+### Nota Importante para usuarios de Ubuntu 24 (Linux)
+
+Para que la firma digital funcione correctamente en **Ubuntu 24**, el certificado digital debe estar instalado en el navegador **Google Chrome**. AutoFirma utiliza el almacén de certificados de este navegador en sistemas Linux para localizar las firmas válidas.
+
+**Pasos para instalar el certificado en Google Chrome:**
+
+1. Abre **Google Chrome**.
+2. Haz clic en los tres puntos verticales en la esquina superior derecha y selecciona **Configuración** (o ve a `chrome://settings` en la barra de direcciones).
+3. En la barra lateral izquierda, haz clic en **Privacidad y seguridad**.
+4. Selecciona **Seguridad**.
+5. Desplázate hacia abajo y haz clic en **Gestionar certificados** (o **Gestionar certificados del dispositivo**).
+6. Ve a la pestaña **Tus certificados** (o la sección equivalente de certificados de usuario).
+7. Haz clic en **Importar**.
+8. Busca y selecciona tu archivo de certificado digital (con extensión `.p12` o `.pfx`) e introduce la contraseña del certificado cuando se te solicite.
+9. Reinicia la aplicación **FirmaPDF** y AutoFirma si las tenías abiertas para que los cambios surtan efecto.
+
 ## Generación del Ejecutable Empaquetado
 
 Para empaquetar la aplicación en un archivo ejecutable independiente (de modo que se pueda distribuir y ejecutar en ordenadores que no tengan instalado Python), se utiliza **PyInstaller**.
