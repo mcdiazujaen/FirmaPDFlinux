@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QListWidget, QListWidgetItem, QGroupBox, QFormLayout,
     QFileDialog, QMessageBox, QProgressDialog, QAbstractItemView,
     QDialog, QDialogButtonBox, QSplitter, QSpinBox, QComboBox, QFrame,
-    QSizePolicy, QScrollArea, QStyle
+    QSizePolicy, QScrollArea, QStyle, QInputDialog
 )
 from PySide6.QtGui import QIcon, QFont
 from PySide6.QtCore import Qt, QThread, Signal, Slot, QDate, QRectF, QTimer
@@ -25,7 +25,8 @@ class SignThread(QThread):
     finished_signal = Signal(bool, str, bool)
 
     def __init__(self, input_pdf, output_pdf, zones, cert_filter, sig_text, rubric_path,
-                 autofirma_path, font_name, font_size, rubric_layout):
+                 autofirma_path, font_name, font_size, rubric_layout,
+                 store="auto", store_pkcs12_path="", store_pkcs12_password=""):
         super().__init__()
         self.input_pdf = input_pdf
         self.output_pdf = output_pdf
@@ -37,6 +38,9 @@ class SignThread(QThread):
         self.font_name = font_name
         self.font_size = font_size
         self.rubric_layout = rubric_layout
+        self.store = store
+        self.store_pkcs12_path = store_pkcs12_path
+        self.store_pkcs12_password = store_pkcs12_password
 
     def run(self):
         # Ejecutar firma múltiple secuencial
@@ -50,7 +54,10 @@ class SignThread(QThread):
             autofirma_path=self.autofirma_path,
             font_name=self.font_name,
             font_size=self.font_size,
-            rubric_layout=self.rubric_layout
+            rubric_layout=self.rubric_layout,
+            store=self.store,
+            store_pkcs12_path=self.store_pkcs12_path,
+            store_pkcs12_password=self.store_pkcs12_password
         )
         self.finished_signal.emit(success, message, text_overflow)
 
@@ -191,6 +198,36 @@ class ConfigDialog(QDialog):
         sep.setFrameShadow(QFrame.Sunken)
         form.addRow(sep)
 
+        # --- Almacén de claves ---
+        self.combo_store = QComboBox()
+        self.combo_store.addItem("Auto (por defecto)", userData="auto")
+        self.combo_store.addItem("Windows", userData="windows")
+        self.combo_store.addItem("Mac (Llavero del sistema)", userData="mac")
+        self.combo_store.addItem("Mozilla / Firefox", userData="mozilla")
+        self.combo_store.addItem("PKCS12 (.p12 / .pfx)", userData="pkcs12")
+        form.addRow("Almacén de claves:", self.combo_store)
+
+        # Fila de ruta PKCS12 (visible solo cuando store == pkcs12)
+        pkcs12_row = QHBoxLayout()
+        self.input_pkcs12_path = QLineEdit()
+        self.input_pkcs12_path.setReadOnly(True)
+        self.input_pkcs12_path.setPlaceholderText("Ruta al fichero .p12 / .pfx")
+        self.btn_browse_pkcs12 = QPushButton("Examinar…")
+        self.btn_browse_pkcs12.clicked.connect(self.select_pkcs12_file)
+        pkcs12_row.addWidget(self.input_pkcs12_path, 1)
+        pkcs12_row.addWidget(self.btn_browse_pkcs12)
+        self.lbl_pkcs12 = QLabel("Fichero PKCS12:")
+        self.lbl_pkcs12.setVisible(False)
+        self.input_pkcs12_path.setVisible(False)
+        self.btn_browse_pkcs12.setVisible(False)
+        self._pkcs12_row_widget = QWidget()
+        self._pkcs12_row_widget.setLayout(pkcs12_row)
+        self._pkcs12_row_widget.setVisible(False)
+        form.addRow(self.lbl_pkcs12, self._pkcs12_row_widget)
+
+        # Conectar cambio de store para mostrar/ocultar campo PKCS12
+        self.combo_store.currentIndexChanged.connect(self._on_store_changed)
+
         # Ruta AutoFirma
         autofirma_row = QHBoxLayout()
         self.input_autofirma_path = QLineEdit()
@@ -267,6 +304,15 @@ class ConfigDialog(QDialog):
                 self.combo_rubric_layout.setCurrentIndex(i)
                 break
 
+        # Almacén de claves
+        store_val = p.get("store", "auto")
+        for i in range(self.combo_store.count()):
+            if self.combo_store.itemData(i) == store_val:
+                self.combo_store.setCurrentIndex(i)
+                break
+        self.input_pkcs12_path.setText(p.get("store_pkcs12_path", ""))
+        self._on_store_changed()  # actualizar visibilidad del campo PKCS12
+
     def _save_current_profile_fields(self):
         """Guarda los valores del formulario en el perfil actualmente seleccionado."""
         idx = self._current_profile_index
@@ -281,6 +327,8 @@ class ConfigDialog(QDialog):
         self.profiles[idx]["signature_font"] = self.combo_font.currentText()
         self.profiles[idx]["signature_font_size"] = self.spin_font_size.value()
         self.profiles[idx]["rubric_layout"] = self.combo_rubric_layout.currentData()
+        self.profiles[idx]["store"] = self.combo_store.currentData()
+        self.profiles[idx]["store_pkcs12_path"] = self.input_pkcs12_path.text().strip()
         # Refrescar el item en la lista si el nombre cambió
         self.list_profiles.item(idx).setText(new_name)
 
@@ -336,8 +384,22 @@ class ConfigDialog(QDialog):
         self._load_profile_fields(new_idx)
 
     # ------------------------------------------------------------------
-    # Selección de archivos
+    # Seleccion de archivos
     # ------------------------------------------------------------------
+
+    def _on_store_changed(self):
+        """Muestra u oculta el campo de ruta PKCS12 según la selección del almacén."""
+        is_pkcs12 = (self.combo_store.currentData() == "pkcs12")
+        self.lbl_pkcs12.setVisible(is_pkcs12)
+        self._pkcs12_row_widget.setVisible(is_pkcs12)
+
+    def select_pkcs12_file(self):
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Seleccionar fichero PKCS12", "",
+            "Certificados PKCS12 (*.p12 *.pfx);;Todos los archivos (*)"
+        )
+        if filepath:
+            self.input_pkcs12_path.setText(filepath)
 
     def select_rubric_image(self):
         filepath, _ = QFileDialog.getOpenFileName(
@@ -767,6 +829,29 @@ class MainWindow(QMainWindow):
         font_name = active_profile.get("signature_font", "Helvetica")
         font_size = int(active_profile.get("signature_font_size", 0))
         rubric_layout = active_profile.get("rubric_layout", "side_by_side")
+        store = active_profile.get("store", "auto")
+        store_pkcs12_path = active_profile.get("store_pkcs12_path", "").strip()
+
+        # Si el almacén es PKCS12, solicitar la contraseña interactivamente
+        store_pkcs12_password = ""
+        if store == "pkcs12":
+            if not store_pkcs12_path:
+                QMessageBox.critical(
+                    self, "Error de Configuración",
+                    "El almacén seleccionado es PKCS12 pero no se ha especificado "
+                    "la ruta al fichero .p12 / .pfx.\n\n"
+                    "Por favor, configúralo en Configuración de Firma."
+                )
+                return
+            password, ok = QInputDialog.getText(
+                self,
+                "Contraseña del certificado",
+                f"Introduzca la contraseña del fichero PKCS12:\n{store_pkcs12_path}",
+                QLineEdit.Password
+            )
+            if not ok:
+                return  # El usuario canceló
+            store_pkcs12_password = password
 
         # Mostrar indicador de carga/progreso modal
         self.progress_dialog = QProgressDialog("Invocando AutoFirma y firmando documento...", "Cancelar", 0, 0, self)
@@ -788,7 +873,10 @@ class MainWindow(QMainWindow):
             autofirma_path=autofirma_path,
             font_name=font_name,
             font_size=font_size,
-            rubric_layout=rubric_layout
+            rubric_layout=rubric_layout,
+            store=store,
+            store_pkcs12_path=store_pkcs12_path,
+            store_pkcs12_password=store_pkcs12_password
         )
         self.sign_thread.finished_signal.connect(self.on_signing_finished)
         self.sign_thread.start()

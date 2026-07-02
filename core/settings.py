@@ -29,7 +29,9 @@ DEFAULT_PROFILE = {
     "signature_text": "Firmado digitalmente por $$SUBJECTCN$$ el $$SIGNDATE=dd/MM/yyyy HH:mm:ss$$",
     "signature_font": "Helvetica",
     "signature_font_size": 0,   # 0 = automático
-    "rubric_layout": "side_by_side"  # "side_by_side" | "background"
+    "rubric_layout": "side_by_side",  # "side_by_side" | "background"
+    "store": "auto",            # "auto" | "windows" | "mac" | "mozilla" | "pkcs12"
+    "store_pkcs12_path": ""     # ruta al fichero .p12/.pfx (solo cuando store == "pkcs12")
 }
 
 def load_settings():

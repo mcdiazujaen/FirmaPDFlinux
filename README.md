@@ -9,9 +9,11 @@ Aplicación de escritorio escrita en Python y PySide6 (Qt) que permite visualiza
 * **Drag & Drop (Arrastrar y Soltar):** Suelta archivos PDF directamente en el visor central para abrirlos al instante.
 * **Firma Única o Múltiple:** Soporte para firmar en múltiples páginas o múltiples zonas del mismo documento. La aplicación encadena secuencialmente llamadas a AutoFirma.
 * **Modo Silencioso o Headless:** Configura un filtro de certificado (por ejemplo, parte de tu DNI/NIE o nombre) para realizar firmas instantáneas en segundo plano sin que aparezca continuamente el selector de certificados de AutoFirma.
+* **Soporte de Almacenes de Claves (Key Stores):** Permite configurar en cada perfil el almacén a utilizar: automático, Windows, macOS, Mozilla/Firefox, o bien una ruta directa a un fichero PKCS12 (`.p12` o `.pfx`).
+* **Cofirma Inteligente (Cosign):** Detección automática de firmas previas en el PDF para usar la instrucción `cosign` en lugar de `sign` de AutoFirma de manera totalmente transparente.
 * **Personalización de Firma:** Permite subir una imagen de rúbrica (firma manuscrita) y personalizar el texto descriptivo que acompaña al sello digital.
 * **Tema Claro y Oscuro:** Interfaz intercambiable con estilos QSS premium.
-* **Persistencia:** La ruta de AutoFirma, filtros, rúbricas y preferencias se guardan de forma segura en `settings.json`.
+* **Persistencia:** La ruta de AutoFirma, perfiles de firma, almacenes y preferencias se guardan de forma segura en la configuración.
 
 ## Requisitos e Instalación
 
@@ -49,9 +51,25 @@ La aplicación busca de forma automática el ejecutable de AutoFirma en las ruta
 
 Si tu instalación se encuentra en una ruta personalizada, puedes examinar y asignarla directamente desde el panel de ajustes en la barra lateral.
 
+### Almacén de Claves y Certificados (Keystores)
+
+Puedes configurar el almacén de certificados que utilizará AutoFirma dentro de la ventana de **Configuración de Firma** de cada perfil:
+* **Auto (por defecto):** Delega la búsqueda al comportamiento estándar de AutoFirma según el sistema operativo.
+* **Windows:** Fuerza el uso del almacén de certificados del sistema operativo Windows.
+* **Mac (Llavero del sistema):** Fuerza el uso del llavero (Keychain) en macOS (parámetro `-store mac`).
+* **Mozilla / Firefox:** Utiliza el almacén de certificados propio del navegador Mozilla Firefox.
+* **PKCS12 (.p12 / .pfx):** Permite usar un fichero de certificado local directamente seleccionando su ruta. Para este almacén, la aplicación solicitará la contraseña de forma interactiva y segura justo antes de realizar la firma, solicitándola una única vez por documento.
+
+### Detección de Cofirma (Cosign)
+
+La aplicación analiza automáticamente el fichero PDF antes de iniciar la firma:
+1. Si el archivo **no está firmado**, se invoca el subcomando `sign` de AutoFirma para aplicar la primera firma.
+2. Si el archivo **ya está firmado digitalmente**, la aplicación lo detecta de forma automática y cambia dinámicamente la instrucción a **`cosign`** (cofirmar). Esto asegura que no se alteren ni invaliden los metadatos de las firmas criptográficas previas.
+*Nota:* El sello visual se inserta en el PDF mediante PyMuPDF de forma previa a la invocación de AutoFirma.
+
 ### Nota Importante para usuarios de Ubuntu 24 (Linux)
 
-Para que la firma digital funcione correctamente en **Ubuntu 24**, el certificado digital debe estar instalado en el navegador **Google Chrome**. AutoFirma utiliza el almacén de certificados de este navegador en sistemas Linux para localizar las firmas válidas.
+Para que la firma digital funcione correctamente en **Ubuntu 24**, el certificado digital debe estar instalado en el navegador **Google Chrome** (en caso de usar la opción por defecto/auto). AutoFirma utiliza el almacén de certificados de este navegador en sistemas Linux para localizar las firmas válidas.
 
 **Pasos para instalar el certificado en Google Chrome:**
 
