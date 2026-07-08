@@ -1,12 +1,18 @@
 import os
 import sys
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 def _get_config_dir():
     # Si la aplicación está empaquetada (PyInstaller), guardamos en la carpeta personal del usuario
     if getattr(sys, 'frozen', False):
         config_dir = os.path.expanduser("~/.firmapdf")
         os.makedirs(config_dir, exist_ok=True)
+        if not sys.platform.startswith("win"):
+            import stat
+            os.chmod(config_dir, stat.S_IRWXU)
         return config_dir
     else:
         # En modo desarrollo, guardamos en la raíz del proyecto
@@ -15,6 +21,13 @@ def _get_config_dir():
 CONFIG_DIR = _get_config_dir()
 SETTINGS_FILE = os.path.join(CONFIG_DIR, "settings.json")
 PROFILES_FILE = os.path.join(CONFIG_DIR, "signature_profiles.json")
+
+def _write_json_secure(filepath, data):
+    import stat
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+    if not sys.platform.startswith("win"):
+        os.chmod(filepath, stat.S_IRUSR | stat.S_IWUSR)
 
 DEFAULT_SETTINGS = {
     "autofirma_path": "",
@@ -48,7 +61,7 @@ def load_settings():
                     settings[key] = val
             return settings
     except Exception as e:
-        print(f"Error cargando configuración: {e}")
+        logger.error(f"Error cargando configuración: {e}")
         return DEFAULT_SETTINGS.copy()
 
 def _migrate_legacy_settings(settings):
@@ -78,11 +91,10 @@ def _migrate_legacy_settings(settings):
 
 def save_settings(settings):
     try:
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(settings, f, indent=4, ensure_ascii=False)
+        _write_json_secure(SETTINGS_FILE, settings)
         return True
     except Exception as e:
-        print(f"Error guardando configuración: {e}")
+        logger.error(f"Error guardando configuración: {e}")
         return False
 
 def load_profiles():
@@ -101,17 +113,16 @@ def load_profiles():
                         profile[key] = val
             return profiles
     except Exception as e:
-        print(f"Error cargando perfiles: {e}")
+        logger.error(f"Error cargando perfiles: {e}")
         return [DEFAULT_PROFILE.copy()]
 
 def save_profiles(profiles):
     """Guarda la lista de perfiles de firma en el archivo JSON de perfiles."""
     try:
-        with open(PROFILES_FILE, "w", encoding="utf-8") as f:
-            json.dump(profiles, f, indent=4, ensure_ascii=False)
+        _write_json_secure(PROFILES_FILE, profiles)
         return True
     except Exception as e:
-        print(f"Error guardando perfiles: {e}")
+        logger.error(f"Error guardando perfiles: {e}")
         return False
 
 def get_active_profile(settings, profiles):

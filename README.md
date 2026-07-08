@@ -16,6 +16,12 @@ Aplicación de escritorio escrita en Python y PySide6 (Qt) que permite visualiza
 * **Tema Claro y Oscuro:** Interfaz intercambiable con estilos QSS premium.
 * **Persistencia:** La ruta de AutoFirma, perfiles de firma, almacenes y preferencias se guardan de forma segura en la configuración.
 
+## Novedades en v1.2.1
+- **Seguridad Mejorada:** La contraseña de certificados PKCS12 se almacena en memoria blindada y se destruye tras la firma. Archivos de configuración ahora utilizan permisos restrictivos `0600`.
+- **Rendimiento:** Implementado renderizado adaptativo del PDF según el nivel de zoom para ahorrar memoria RAM y CPU, y algoritmo de medición de rúbricas más preciso.
+- **Mantenibilidad:** Separación de UI pesada (Dialogos e Hilos) a módulos propios, inicialización determinista de estado, y contexto seguro para descriptores de ficheros PDF.
+- **Observabilidad:** Sustitución de salidas en consola por un sistema jerárquico de logging (`core/logger.py`).
+
 ## Requisitos e Instalación
 
 Para ejecutar este proyecto necesitas tener instalado **Python 3.8+** y tener la aplicación **AutoFirma** instalada en tu equipo.

@@ -1,8 +1,10 @@
 import sys
 from PySide6.QtWidgets import QApplication
 from ui.main_window import MainWindow
+from core.logger import setup_logging
 
 def main():
+    setup_logging()
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()

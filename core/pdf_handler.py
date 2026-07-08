@@ -3,11 +3,29 @@ import os
 import re
 from datetime import datetime
 from PySide6.QtGui import QImage
+import logging
+
+logger = logging.getLogger(__name__)
+
+def validate_pdf_file(filepath: str) -> None:
+    """Lanza ValueError si el fichero no es un PDF válido."""
+    with open(filepath, "rb") as f:
+        header = f.read(5)
+    if header != b"%PDF-":
+        raise ValueError(f"El fichero no es un PDF válido: {filepath!r}")
 
 class PdfHandler:
     def __init__(self, filepath):
+        validate_pdf_file(filepath)
         self.filepath = filepath
         self.doc = fitz.open(filepath)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
 
     def get_page_count(self):
         return len(self.doc)
@@ -164,7 +182,7 @@ def stamp_visual_signature(input_pdf_path, output_pdf_path, zones,
                 try:
                     page.insert_image(img_rect, filename=rubric_image_path, keep_proportion=True)
                 except Exception as e:
-                    print(f"[stamp] No se pudo insertar la imagen de rúbrica (fondo): {e}")
+                    logger.warning(f"[stamp] No se pudo insertar la imagen de rúbrica (fondo): {e}")
                     has_image = False
 
                 # Texto superpuesto: ocupa todo el ancho, alineado arriba
@@ -200,7 +218,7 @@ def stamp_visual_signature(input_pdf_path, output_pdf_path, zones,
                     try:
                         page.insert_image(img_rect, filename=rubric_image_path, keep_proportion=True)
                     except Exception as e:
-                        print(f"[stamp] No se pudo insertar la imagen de rúbrica: {e}")
+                        logger.warning(f"[stamp] No se pudo insertar la imagen de rúbrica: {e}")
                         has_image = False
 
                 if signature_text:
@@ -267,42 +285,46 @@ def _insert_text(page, text_rect, text, fontname, fontsize, align):
     Inserta texto en el rectángulo dado. Devuelve True si el texto desborda el área.
     Intenta reducir el tamaño de fuente antes de reportar desbordamiento.
     """
+    import fitz
+    
+    # Crear un documento temporal en memoria para medir el texto sin manchar la página original
+    tmp_doc = fitz.open()
+    tmp_page = tmp_doc.new_page(width=text_rect.width, height=text_rect.height)
+    measure_rect = fitz.Rect(0, 0, text_rect.width, text_rect.height)
+
     # Intentar con el tamaño especificado primero
-    result = page.insert_textbox(
-        text_rect,
-        text,
-        fontsize=fontsize,
-        fontname=fontname,
-        color=(0.1, 0.1, 0.4),   # azul oscuro
-        align=align
+    result = tmp_page.insert_textbox(
+        measure_rect, text, fontsize=fontsize, fontname=fontname, align=align
     )
-    # insert_textbox devuelve el espacio sobrante (negativo = desbordamiento)
+    
     if result >= 0:
-        return False  # sin desbordamiento
+        # Cabe perfectamente
+        page.insert_textbox(
+            text_rect, text, fontsize=fontsize, fontname=fontname,
+            color=(0.1, 0.1, 0.4), align=align
+        )
+        tmp_doc.close()
+        return False
 
     # Intentar reducir el tamaño de fuente automáticamente hasta un mínimo
     min_size = 5.0
     reduced = fontsize
+    best_size = min_size
+    
     while reduced > min_size:
         reduced = max(min_size, reduced - 0.5)
-        result = page.insert_textbox(
-            text_rect,
-            text,
-            fontsize=reduced,
-            fontname=fontname,
-            color=(0.1, 0.1, 0.4),
-            align=align
+        r = tmp_page.insert_textbox(
+            measure_rect, text, fontsize=reduced, fontname=fontname, align=align
         )
-        if result >= 0:
-            return False  # cabió con fuente reducida
+        if r >= 0:
+            best_size = reduced
+            break
 
-    # Si aun así no cabe, insertar con el mínimo y reportar desbordamiento
+    tmp_doc.close()
+    
+    # Insertar de verdad en la página original con el tamaño calculado
     page.insert_textbox(
-        text_rect,
-        text,
-        fontsize=min_size,
-        fontname=fontname,
-        color=(0.1, 0.1, 0.4),
-        align=align
+        text_rect, text, fontsize=best_size, fontname=fontname,
+        color=(0.1, 0.1, 0.4), align=align
     )
-    return True  # desbordamiento detectado
+    return best_size == min_size and result < 0

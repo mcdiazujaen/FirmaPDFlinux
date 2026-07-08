@@ -6,6 +6,18 @@ import base64
 import tempfile
 from PySide6.QtGui import QImage
 from PySide6.QtCore import QBuffer, QByteArray, QIODevice, Qt
+import logging
+
+logger = logging.getLogger(__name__)
+
+def _validate_path_arg(path: str, label: str) -> None:
+    """Previene argumentos que empiecen por '-' o contengan nulos."""
+    if not path:
+        return
+    if path.startswith("-"):
+        raise ValueError(f"{label} no puede comenzar por '-': {path!r}")
+    if "\x00" in path:
+        raise ValueError(f"{label} contiene un carácter nulo.")
 
 def detect_autofirma_path():
     """Detecta la ruta por defecto de AutoFirma según el sistema operativo."""
@@ -56,7 +68,7 @@ def is_pdf_signed(pdf_path):
             doc.close()
         return False
     except Exception as e:
-        print(f"[is_pdf_signed] Error al detectar firma: {e}")
+        logger.error(f"[is_pdf_signed] Error al detectar firma: {e}")
         return False
 
 
@@ -72,6 +84,11 @@ def execute_autofirma(autofirma_path, input_path, output_path, config_str, cert_
     """
     if not autofirma_path:
         autofirma_path = detect_autofirma_path()
+
+    _validate_path_arg(input_path, "input_path")
+    _validate_path_arg(output_path, "output_path")
+    if cert_filter:
+        _validate_path_arg(cert_filter, "cert_filter")
 
     # Construir el comando.
     # En macOS si es el .jar, se debe ejecutar con 'java -jar'
@@ -95,7 +112,10 @@ def execute_autofirma(autofirma_path, input_path, output_path, config_str, cert_
             cmd.extend(["-store", store])
         # Contraseña del PKCS12 (solo aplica cuando el store empieza por 'pkcs12:')
         if store.startswith("pkcs12:") and store_pkcs12_password:
-            cmd.extend(["-password", store_pkcs12_password])
+            # SECURITY: AutoFirma no soporta lectura de contraseña por stdin/fichero de forma estándar.
+            # Convertimos temporalmente a string (visible en ps aux).
+            pwd_str = store_pkcs12_password.decode('utf-8') if isinstance(store_pkcs12_password, bytearray) else store_pkcs12_password
+            cmd.extend(["-password", pwd_str])
 
     # Agregar la configuración
     cmd.extend(["-config", config_str])
@@ -104,8 +124,8 @@ def execute_autofirma(autofirma_path, input_path, output_path, config_str, cert_
     if cert_filter:
         cmd.extend(["-filter", f"subject.contains:{cert_filter}"])
 
-    print(f"Ejecutando AutoFirma: {autofirma_path} {subcmd} -i {input_path} -o {output_path}")
-    print(f"Config:\n{config_str}")
+    logger.debug(f"Ejecutando AutoFirma: {autofirma_path} {subcmd} -i {input_path} -o {output_path}")
+    logger.debug(f"Config:\n{config_str}")
     
     try:
         # Ejecutar el comando. Capturamos salida estándar y errores.
@@ -170,9 +190,9 @@ def sign_pdf_multiple_zones(input_pdf_path, output_pdf_path, zones, cert_filter=
     # ---------------------------------------------------------------
     already_signed = is_pdf_signed(input_pdf_path)
     if already_signed:
-        print(f"[autofirma] PDF ya firmado detectado → se usará 'cosign' (cofirma)")
+        logger.info(f"[autofirma] PDF ya firmado detectado → se usará 'cosign' (cofirma)")
     else:
-        print(f"[autofirma] PDF sin firmas previas detectado → se usará 'sign'")
+        logger.info(f"[autofirma] PDF sin firmas previas detectado → se usará 'sign'")
 
     # ---------------------------------------------------------------
     # Construir el valor del parámetro -store para AutoFirma
@@ -183,7 +203,7 @@ def sign_pdf_multiple_zones(input_pdf_path, output_pdf_path, zones, cert_filter=
             if store_pkcs12_path:
                 effective_store = f"pkcs12:{store_pkcs12_path}"
             else:
-                print("[autofirma] ADVERTENCIA: store=pkcs12 pero no se ha especificado ruta al .p12")
+                logger.warning("[autofirma] ADVERTENCIA: store=pkcs12 pero no se ha especificado ruta al .p12")
         else:
             effective_store = store  # "windows", "mac", "mozilla"
 
@@ -198,7 +218,7 @@ def sign_pdf_multiple_zones(input_pdf_path, output_pdf_path, zones, cert_filter=
         os.close(fd)
         temp_files.append(stamped_path)
 
-        print(f"[stamp] Insertando {len(zones)} sello(s) visual(es) en: {stamped_path}")
+        logger.info(f"[stamp] Insertando {len(zones)} sello(s) visual(es) en: {stamped_path}")
 
         ok, msg, text_overflow = stamp_visual_signature(
             input_pdf_path=current_input,
@@ -225,7 +245,7 @@ def sign_pdf_multiple_zones(input_pdf_path, output_pdf_path, zones, cert_filter=
         config_lines = ["headless=true"] if cert_filter else ["headless=false"]
         config_str = "\n".join(config_lines)
 
-        print(f"[autofirma] Firmando digitalmente el documento sellado...")
+        logger.info(f"[autofirma] Firmando digitalmente el documento sellado...")
 
         success, msg = execute_autofirma(
             autofirma_path=autofirma_path,
@@ -250,4 +270,4 @@ def sign_pdf_multiple_zones(input_pdf_path, output_pdf_path, zones, cert_filter=
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
             except Exception as e:
-                print(f"Error limpiando temporal {temp_path}: {e}")
+                logger.error(f"Error limpiando temporal {temp_path}: {e}")

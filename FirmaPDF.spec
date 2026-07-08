@@ -29,7 +29,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='FirmaPDF_v1.2',
+    name='FirmaPDF_v1.2.1',
     debug=False,
     bootloader_ignore_signals=False,
     strip=True,

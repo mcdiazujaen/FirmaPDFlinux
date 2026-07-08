@@ -1,7 +1,7 @@
 import os
 from PySide6.QtWidgets import QScrollArea, QWidget, QLabel, QVBoxLayout, QMessageBox
 from PySide6.QtGui import QPainter, QPen, QColor, QBrush, QFont, QPixmap
-from PySide6.QtCore import Qt, QRect, QPoint, Signal, QRectF
+from PySide6.QtCore import Qt, QRect, QPoint, Signal, QRectF, QTimer
 
 class PdfPageCanvas(QWidget):
     # Señal emitida al dibujar una nueva zona de firma: (x_pt, y_pt, w_pt, h_pt)
@@ -17,7 +17,10 @@ class PdfPageCanvas(QWidget):
         self.drawing = False
         self.start_pos = QPoint()
         self.current_rect = QRect()
+        self._zone_emit_pending = False
+        self.empty_text = "Arrastra o selecciona un PDF para comenzar"
         self.setMouseTracking(True)
+        self.setMinimumSize(400, 300)
 
     def set_page_image(self, qimg, pdf_w, pdf_h, zoom):
         """Actualiza la imagen de la página y las dimensiones del PDF."""
@@ -54,17 +57,23 @@ class PdfPageCanvas(QWidget):
             
             # Solo añadir si la zona tiene un tamaño mínimo razonable (ej. 15x15 píxeles)
             if self.current_rect.width() > 15 and self.current_rect.height() > 15:
-                # Convertir coordenadas de píxeles (con zoom) a puntos de PDF (sin zoom)
-                x_pt = self.current_rect.x() / self.zoom
-                y_pt = self.current_rect.y() / self.zoom
-                w_pt = self.current_rect.width() / self.zoom
-                h_pt = self.current_rect.height() / self.zoom
-                
-                # Emitir señal
-                self.zone_drawn.emit(x_pt, y_pt, w_pt, h_pt)
+                if not self._zone_emit_pending:
+                    self._zone_emit_pending = True
+                    # Convertir coordenadas de píxeles (con zoom) a puntos de PDF (sin zoom)
+                    x_pt = self.current_rect.x() / self.zoom
+                    y_pt = self.current_rect.y() / self.zoom
+                    w_pt = self.current_rect.width() / self.zoom
+                    h_pt = self.current_rect.height() / self.zoom
+                    
+                    # Emitir señal con debounce
+                    QTimer.singleShot(150, lambda: self._emit_zone(x_pt, y_pt, w_pt, h_pt))
                 
             self.current_rect = QRect()
             self.update()
+
+    def _emit_zone(self, x_pt, y_pt, w_pt, h_pt):
+        self._zone_emit_pending = False
+        self.zone_drawn.emit(x_pt, y_pt, w_pt, h_pt)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -80,7 +89,7 @@ class PdfPageCanvas(QWidget):
             painter.setPen(QColor("#a1a1aa") if self.property("theme") == "dark" else QColor("#71717a"))
             font = QFont("Segoe UI", 14)
             painter.setFont(font)
-            painter.drawText(self.rect(), Qt.AlignCenter, "Arrastra o selecciona un PDF para comenzar")
+            painter.drawText(self.rect(), Qt.AlignCenter, self.empty_text)
             return
 
         # 2. Dibujar las zonas de firma ya guardadas
@@ -140,8 +149,13 @@ class PdfViewer(QScrollArea):
         self.canvas.setProperty("theme", theme)
         self.canvas.update()
 
+    def set_empty_text(self, text):
+        self.canvas.empty_text = text
+        self.canvas.update()
+
     def set_page(self, qimg, pdf_w, pdf_h, zoom):
         """Asigna la página a mostrar."""
+        self.canvas.setMinimumSize(0, 0)
         self.canvas.set_page_image(qimg, pdf_w, pdf_h, zoom)
 
     def update_zones(self, zones):
