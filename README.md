@@ -11,6 +11,7 @@ Aplicación de escritorio escrita en Python y PySide6 (Qt) que permite visualiza
 * **Modo Silencioso o Headless:** Configura un filtro de certificado (por ejemplo, parte de tu DNI/NIE o nombre) para realizar firmas instantáneas en segundo plano sin que aparezca continuamente el selector de certificados de AutoFirma.
 * **Soporte de Almacenes de Claves (Key Stores):** Permite configurar en cada perfil el almacén a utilizar: automático, Windows, macOS, Mozilla/Firefox, o bien una ruta directa a un fichero PKCS12 (`.p12` o `.pfx`).
 * **Cofirma Inteligente (Cosign):** Detección automática de firmas previas en el PDF para usar la instrucción `cosign` en lugar de `sign` de AutoFirma de manera totalmente transparente.
+* **Visualización del Documento Firmado en Nueva Pestaña:** Al finalizar el proceso de firma con éxito, la aplicación abre automáticamente una pestaña secundaria ("Documento Firmado") para que puedas previsualizar e inspeccionar el documento resultante con las firmas estampadas, manteniendo la pestaña del original al lado.
 * **Personalización de Firma:** Permite subir una imagen de rúbrica (firma manuscrita) y personalizar el texto descriptivo que acompaña al sello digital.
 * **Tema Claro y Oscuro:** Interfaz intercambiable con estilos QSS premium.
 * **Persistencia:** La ruta de AutoFirma, perfiles de firma, almacenes y preferencias se guardan de forma segura en la configuración.
@@ -54,6 +55,7 @@ Si tu instalación se encuentra en una ruta personalizada, puedes examinar y asi
 ### Almacén de Claves y Certificados (Keystores)
 
 Puedes configurar el almacén de certificados que utilizará AutoFirma dentro de la ventana de **Configuración de Firma** de cada perfil:
+
 * **Auto (por defecto):** Delega la búsqueda al comportamiento estándar de AutoFirma según el sistema operativo.
 * **Windows:** Fuerza el uso del almacén de certificados del sistema operativo Windows.
 * **Mac (Llavero del sistema):** Fuerza el uso del llavero (Keychain) en macOS (parámetro `-store mac`).
@@ -63,6 +65,7 @@ Puedes configurar el almacén de certificados que utilizará AutoFirma dentro de
 ### Detección de Cofirma (Cosign)
 
 La aplicación analiza automáticamente el fichero PDF antes de iniciar la firma:
+
 1. Si el archivo **no está firmado**, se invoca el subcomando `sign` de AutoFirma para aplicar la primera firma.
 2. Si el archivo **ya está firmado digitalmente**, la aplicación lo detecta de forma automática y cambia dinámicamente la instrucción a **`cosign`** (cofirmar). Esto asegura que no se alteren ni invaliden los metadatos de las firmas criptográficas previas.
 *Nota:* El sello visual se inserta en el PDF mediante PyMuPDF de forma previa a la invocación de AutoFirma.

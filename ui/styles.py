@@ -170,6 +170,34 @@ QScrollArea {
     border-color: #6366f1;
     background-color: #1a1a24;
 }
+
+QTabWidget::pane {
+    border: 1px solid #27272a;
+    background-color: #121214;
+    border-radius: 8px;
+}
+
+QTabBar::tab {
+    background-color: #1c1c1f;
+    color: #a1a1aa;
+    border: 1px solid #27272a;
+    border-bottom: none;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    padding: 8px 16px;
+    margin-right: 2px;
+}
+
+QTabBar::tab:selected {
+    background-color: #121214;
+    color: #ffffff;
+    border-color: #27272a;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: #27272a;
+    color: #e4e4e7;
+}
 """
 
 LIGHT_STYLE = """
@@ -341,5 +369,33 @@ QScrollArea {
 #dropArea[dragged="true"] {
     border-color: #4f46e5;
     background-color: #d1d5db;
+}
+
+QTabWidget::pane {
+    border: 1px solid #e4e4e7;
+    background-color: #ffffff;
+    border-radius: 8px;
+}
+
+QTabBar::tab {
+    background-color: #e4e4e7;
+    color: #71717a;
+    border: 1px solid #e4e4e7;
+    border-bottom: none;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
+    padding: 8px 16px;
+    margin-right: 2px;
+}
+
+QTabBar::tab:selected {
+    background-color: #ffffff;
+    color: #4f46e5;
+    border-color: #e4e4e7;
+}
+
+QTabBar::tab:hover:!selected {
+    background-color: #d4d4d8;
+    color: #18181b;
 }
 """

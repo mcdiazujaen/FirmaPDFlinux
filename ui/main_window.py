@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QLineEdit, QListWidget, QListWidgetItem, QGroupBox, QFormLayout,
     QFileDialog, QMessageBox, QProgressDialog, QAbstractItemView,
     QDialog, QDialogButtonBox, QSplitter, QSpinBox, QComboBox, QFrame,
-    QSizePolicy, QScrollArea, QStyle, QInputDialog
+    QSizePolicy, QScrollArea, QStyle, QInputDialog, QTabWidget
 )
 from PySide6.QtGui import QIcon, QFont
 from PySide6.QtCore import Qt, QThread, Signal, Slot, QDate, QRectF, QTimer
@@ -447,8 +447,11 @@ class MainWindow(QMainWindow):
 
         # Variables de estado
         self.pdf_handler = None
+        self.pdf_handler_signed = None
         self.current_page = 0
+        self.current_page_signed = 0
         self.zoom_factor = 1.0
+        self.zoom_factor_signed = 1.0
         self.signature_zones = []  # Lista de dicts: {"id": int, "page": int, "rect_pt": QRectF, "coords": dict}
         self.next_zone_id = 1
         
@@ -587,7 +590,64 @@ class MainWindow(QMainWindow):
         self.viewer = PdfViewer(self)
         self.viewer.file_dropped.connect(self.load_pdf)
         self.viewer.zone_added.connect(self.on_zone_drawn)
-        main_layout.addWidget(self.viewer, 1)  # Estirar para tomar todo el espacio restante
+        
+        self.viewer_signed = PdfViewer()
+        self.viewer_signed.canvas.setMouseTracking(False)
+        self.viewer_signed.setAcceptDrops(False)
+        self.viewer_signed.hide()
+        
+        self.tabs = QTabWidget(self)
+        self.tabs.addTab(self.viewer, "Documento Original")
+        self.tabs.currentChanged.connect(self.on_tab_changed)
+        
+        main_layout.addWidget(self.tabs, 1)  # Estirar para tomar todo el espacio restante
+
+    # ---------------- MÉTODOS AUXILIARES DE ESTADO ACTIVO ----------------
+
+    def get_active_viewer(self):
+        if hasattr(self, "tabs") and self.tabs.currentIndex() == 1:
+            return self.viewer_signed
+        return self.viewer
+
+    def get_active_pdf_handler(self):
+        if hasattr(self, "tabs") and self.tabs.currentIndex() == 1:
+            return self.pdf_handler_signed
+        return self.pdf_handler
+
+    def get_active_page(self):
+        if hasattr(self, "tabs") and self.tabs.currentIndex() == 1:
+            return self.current_page_signed
+        return self.current_page
+
+    def set_active_page(self, page):
+        if hasattr(self, "tabs") and self.tabs.currentIndex() == 1:
+            self.current_page_signed = page
+        else:
+            self.current_page = page
+
+    def get_active_zoom(self):
+        if hasattr(self, "tabs") and self.tabs.currentIndex() == 1:
+            return self.zoom_factor_signed
+        return self.zoom_factor
+
+    def set_active_zoom(self, zoom):
+        if hasattr(self, "tabs") and self.tabs.currentIndex() == 1:
+            self.zoom_factor_signed = zoom
+        else:
+            self.zoom_factor = zoom
+
+    def on_tab_changed(self, index):
+        self.update_page_info()
+        self.render_current_page()
+        
+        if index == 1:
+            self.list_zones.setEnabled(False)
+            self.btn_delete_zone.setEnabled(False)
+            self.btn_sign.setEnabled(False)
+        else:
+            self.list_zones.setEnabled(True)
+            self.btn_delete_zone.setEnabled(len(self.signature_zones) > 0)
+            self.btn_sign.setEnabled(len(self.signature_zones) > 0)
 
     # ---------------- HELPERS ----------------
 
@@ -620,6 +680,18 @@ class MainWindow(QMainWindow):
             self.signature_zones = []
             self.next_zone_id = 1
             self.list_zones.clear()
+            
+            # Limpiar estado del PDF firmado
+            if hasattr(self, "pdf_handler_signed") and self.pdf_handler_signed:
+                self.pdf_handler_signed.close()
+            self.pdf_handler_signed = None
+            self.current_page_signed = 0
+            self.zoom_factor_signed = 1.0
+            
+            if hasattr(self, "tabs"):
+                if self.tabs.count() > 1:
+                    self.tabs.removeTab(1)
+                self.tabs.setCurrentIndex(0)
             
             # Actualizar interfaz
             filename = os.path.basename(filepath)
@@ -654,66 +726,90 @@ class MainWindow(QMainWindow):
         self.render_current_page()
 
     def render_current_page(self):
-        if not self.pdf_handler:
+        handler = self.get_active_pdf_handler()
+        if not handler:
             return
             
+        viewer = self.get_active_viewer()
+        page = self.get_active_page()
+        zoom = self.get_active_zoom()
+
         # Renderizar la página actual en una QImage a alta resolución constante (3.0x = 216 DPI)
-        qimg, _, _ = self.pdf_handler.render_page(self.current_page, 3.0)
-        pdf_w, pdf_h = self.pdf_handler.get_page_size(self.current_page)
+        qimg, _, _ = handler.render_page(page, 3.0)
+        pdf_w, pdf_h = handler.get_page_size(page)
         
         # Cargar en el visor pasando el zoom real de pantalla
-        self.viewer.set_page(qimg, pdf_w, pdf_h, self.zoom_factor)
+        viewer.set_page(qimg, pdf_w, pdf_h, zoom)
         self.update_page_info()
         self.refresh_viewer_zones()
 
     def fit_to_page_zoom(self):
         """Calcula el factor de zoom basándose en el lado más largo para encajar el documento completo."""
-        if not self.pdf_handler:
+        handler = self.get_active_pdf_handler()
+        if not handler:
             return
-        pdf_w, pdf_h = self.pdf_handler.get_page_size(self.current_page)
+        page = self.get_active_page()
+        pdf_w, pdf_h = handler.get_page_size(page)
         
+        viewer = self.get_active_viewer()
         # Obtener dimensiones reales del widget visor
-        viewport_w = self.viewer.width() - 36
-        viewport_h = self.viewer.height() - 36
+        viewport_w = viewer.width() - 36
+        viewport_h = viewer.height() - 36
         
         if viewport_w > 0 and viewport_h > 0:
             # Ajustar basándose en el lado más largo de la página del PDF
             if pdf_h > pdf_w:
-                self.zoom_factor = viewport_h / pdf_h
+                zoom = viewport_h / pdf_h
             else:
-                self.zoom_factor = viewport_w / pdf_w
+                zoom = viewport_w / pdf_w
                 
             # Limitar a un rango lógico (ej. 0.2 a 3.0)
-            self.zoom_factor = max(0.2, min(self.zoom_factor, 3.0))
+            zoom = max(0.2, min(zoom, 3.0))
+            self.set_active_zoom(zoom)
 
     def update_page_info(self):
-        if not self.pdf_handler:
+        handler = self.get_active_pdf_handler()
+        if not handler:
+            self.lbl_page_info.setText("Página: - / -")
+            self.lbl_zoom_info.setText("100%")
+            self.btn_prev_page.setEnabled(False)
+            self.btn_next_page.setEnabled(False)
             return
-        total = self.pdf_handler.get_page_count()
-        self.lbl_page_info.setText(f"Página: {self.current_page + 1} / {total}")
-        self.lbl_zoom_info.setText(f"{int(self.zoom_factor * 100)}%")
+        total = handler.get_page_count()
+        page = self.get_active_page()
+        zoom = self.get_active_zoom()
+        self.lbl_page_info.setText(f"Página: {page + 1} / {total}")
+        self.lbl_zoom_info.setText(f"{int(zoom * 100)}%")
         
-        self.btn_prev_page.setEnabled(self.current_page > 0)
-        self.btn_next_page.setEnabled(self.current_page < total - 1)
+        self.btn_prev_page.setEnabled(page > 0)
+        self.btn_next_page.setEnabled(page < total - 1)
 
     def prev_page(self):
-        if self.pdf_handler and self.current_page > 0:
-            self.current_page -= 1
+        handler = self.get_active_pdf_handler()
+        page = self.get_active_page()
+        if handler and page > 0:
+            self.set_active_page(page - 1)
             self.render_current_page()
 
     def next_page(self):
-        if self.pdf_handler and self.current_page < self.pdf_handler.get_page_count() - 1:
-            self.current_page += 1
+        handler = self.get_active_pdf_handler()
+        page = self.get_active_page()
+        if handler and page < handler.get_page_count() - 1:
+            self.set_active_page(page + 1)
             self.render_current_page()
 
     def zoom_in(self):
-        if self.pdf_handler and self.zoom_factor < 4.0:
-            self.zoom_factor += 0.2
+        handler = self.get_active_pdf_handler()
+        zoom = self.get_active_zoom()
+        if handler and zoom < 4.0:
+            self.set_active_zoom(zoom + 0.2)
             self.render_current_page()
 
     def zoom_out(self):
-        if self.pdf_handler and self.zoom_factor > 0.4:
-            self.zoom_factor -= 0.2
+        handler = self.get_active_pdf_handler()
+        zoom = self.get_active_zoom()
+        if handler and zoom > 0.4:
+            self.set_active_zoom(zoom - 0.2)
             self.render_current_page()
 
     # ---------------- ZONAS DE FIRMA ----------------
@@ -760,9 +856,12 @@ class MainWindow(QMainWindow):
         self.refresh_viewer_zones()
 
     def refresh_viewer_zones(self):
-        # Filtrar zonas que corresponden a la página actual
-        page_zones = [z for z in self.signature_zones if z["page"] == self.current_page]
-        self.viewer.update_zones(page_zones)
+        if hasattr(self, "tabs") and self.tabs.currentIndex() == 1:
+            self.viewer_signed.update_zones([])
+        else:
+            # Filtrar zonas que corresponden a la página actual
+            page_zones = [z for z in self.signature_zones if z["page"] == self.current_page]
+            self.viewer.update_zones(page_zones)
 
     def delete_selected_zone(self):
         selected_items = self.list_zones.selectedItems()
@@ -789,6 +888,8 @@ class MainWindow(QMainWindow):
         # Buscar la zona
         for zone in self.signature_zones:
             if zone["id"] == zone_id:
+                if self.tabs.currentIndex() != 0:
+                    self.tabs.setCurrentIndex(0)
                 if self.current_page != zone["page"]:
                     self.current_page = zone["page"]
                     self.render_current_page()
@@ -819,6 +920,8 @@ class MainWindow(QMainWindow):
         )
         if not output_pdf:
             return
+            
+        self.last_output_pdf = output_pdf
             
         # Obtener el perfil activo
         active_profile = get_active_profile(self.settings, self.profiles)
@@ -902,6 +1005,27 @@ class MainWindow(QMainWindow):
                 self, "Operación Exitosa",
                 "El documento ha sido firmado de manera exitosa y guardado en la ubicación elegida."
             )
+            
+            # Cargar el PDF firmado en la segunda pestaña
+            if hasattr(self, "last_output_pdf") and self.last_output_pdf and os.path.exists(self.last_output_pdf):
+                try:
+                    if hasattr(self, "pdf_handler_signed") and self.pdf_handler_signed:
+                        self.pdf_handler_signed.close()
+                    
+                    self.pdf_handler_signed = PdfHandler(self.last_output_pdf)
+                    self.current_page_signed = 0
+                    self.zoom_factor_signed = 1.0
+                    
+                    if self.tabs.count() < 2:
+                        self.tabs.addTab(self.viewer_signed, "Documento Firmado")
+                    
+                    self.tabs.setCurrentIndex(1)
+                    self.render_current_page()
+                except Exception as e:
+                    QMessageBox.warning(
+                        self, "Error al cargar PDF firmado",
+                        f"No se pudo cargar el PDF firmado en la pestaña:\n{str(e)}"
+                    )
         else:
             QMessageBox.critical(
                 self, "Fallo al Firmar",
@@ -935,10 +1059,12 @@ class MainWindow(QMainWindow):
             self.setStyleSheet(DARK_STYLE)
             self.btn_toggle_theme.setText("Modo Claro")
             self.viewer.set_theme("dark")
+            self.viewer_signed.set_theme("dark")
         else:
             self.setStyleSheet(LIGHT_STYLE)
             self.btn_toggle_theme.setText("Modo Oscuro")
             self.viewer.set_theme("light")
+            self.viewer_signed.set_theme("light")
         self.style().unpolish(self)
         self.style().polish(self)
 
@@ -954,4 +1080,6 @@ class MainWindow(QMainWindow):
         # Cerrar el handler al salir
         if self.pdf_handler:
             self.pdf_handler.close()
+        if hasattr(self, "pdf_handler_signed") and self.pdf_handler_signed:
+            self.pdf_handler_signed.close()
         event.accept()
